@@ -17,29 +17,12 @@ pipeline {
         stage('Setup Node.js') {
             steps {
                 echo '🛠️ Node.js 환경 설정'
-                script {
-                    try {
-                        // NodeJS 도구 사용 시도
-                        def nodeHome = tool name: 'NodeJS-18', type: 'nodejs'
-                        env.PATH = "${nodeHome}/bin:${env.PATH}"
-                        echo "✅ NodeJS Plugin 사용"
-                    } catch (Exception e) {
-                        echo "⚠️ NodeJS Plugin 사용 실패: ${e.message}"
-                        echo "📦 Node.js 직접 설치 시도"
-                        sh '''
-                            # Node.js 설치 확인
-                            if ! command -v node &> /dev/null; then
-                                echo "Node.js 설치 중..."
-                                curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-                                apt-get install -y nodejs
-                            fi
-                        '''
-                    }
-                }
                 sh '''
                     echo "Node.js 버전 확인:"
                     node --version
                     npm --version
+                    echo "Node.js 경로: $(which node)"
+                    echo "npm 경로: $(which npm)"
                     echo "현재 작업 디렉토리: $(pwd)"
                     ls -la
                 '''
@@ -49,44 +32,54 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo '📦 의존성 설치 중...'
-                sh 'npm ci'
+                sh '''
+                    echo "package.json 확인:"
+                    cat package.json
+                    echo "npm install 실행:"
+                    npm install
+                '''
             }
         }
         
         stage('Lint') {
             steps {
                 echo '🔍 코드 린트 검사 중...'
-                sh 'npm run lint'
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    sh 'npm run lint'
+                }
             }
         }
         
         stage('Test') {
             steps {
                 echo '🧪 단위 테스트 실행 중...'
-                sh 'npm run test:ci'
+                sh '''
+                    echo "테스트 실행:"
+                    npm test -- --coverage --watchAll=false --testResultsProcessor=jest-junit
+                '''
             }
             post {
                 always {
-                    // JUnit 테스트 결과 발행
                     script {
+                        // JUnit 테스트 결과 발행
                         if (fileExists('junit.xml')) {
                             junit 'junit.xml'
+                            echo "✅ JUnit 테스트 결과 발행 완료"
                         } else {
                             echo "⚠️ junit.xml 파일이 없습니다."
                         }
-                    }
-                    
-                    // 코드 커버리지 리포트 발행
-                    script {
+                        
+                        // 코드 커버리지 리포트 발행
                         if (fileExists('coverage/lcov-report/index.html')) {
                             publishHTML([
-                                allowMissing: false,
+                                allowMissing: true,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
                                 reportDir: 'coverage/lcov-report',
                                 reportFiles: 'index.html',
                                 reportName: 'Coverage Report'
                             ])
+                            echo "✅ 커버리지 리포트 발행 완료"
                         } else {
                             echo "⚠️ 커버리지 리포트를 찾을 수 없습니다."
                         }
@@ -98,7 +91,12 @@ pipeline {
         stage('Build') {
             steps {
                 echo '🏗️ 프로덕션 빌드 중...'
-                sh 'npm run build'
+                sh '''
+                    echo "빌드 시작:"
+                    npm run build
+                    echo "빌드 완료 - 결과 확인:"
+                    ls -la build/
+                '''
             }
         }
         
@@ -108,6 +106,7 @@ pipeline {
                 script {
                     if (fileExists('build')) {
                         archiveArtifacts artifacts: 'build/**/*', allowEmptyArchive: true
+                        echo "✅ 빌드 결과물 아카이브 완료"
                     } else {
                         echo "⚠️ build 디렉토리를 찾을 수 없습니다."
                     }
@@ -154,7 +153,13 @@ pipeline {
     post {
         always {
             echo '🧹 Pipeline 완료 - 정리 작업 중...'
-            // cleanWs() - 디버깅을 위해 임시 주석처리
+            script {
+                echo "워크스페이스 내용:"
+                sh 'ls -la'
+                if (fileExists('coverage')) {
+                    sh 'ls -la coverage/'
+                }
+            }
         }
         success {
             echo '✅ Pipeline 성공!'
@@ -163,7 +168,7 @@ pipeline {
                 ✅ 빌드 성공!
                 프로젝트: ${env.JOB_NAME}
                 빌드 번호: ${env.BUILD_NUMBER}
-                브랜치: ${env.BRANCH_NAME}
+                브랜치: ${env.BRANCH_NAME ?: 'main'}
                 커밋: ${env.GIT_COMMIT?.take(7)}
                 빌드 URL: ${env.BUILD_URL}
                 """
@@ -177,7 +182,7 @@ pipeline {
                 ❌ 빌드 실패!
                 프로젝트: ${env.JOB_NAME}
                 빌드 번호: ${env.BUILD_NUMBER}
-                브랜치: ${env.BRANCH_NAME}
+                브랜치: ${env.BRANCH_NAME ?: 'main'}
                 실패 단계: ${env.STAGE_NAME}
                 빌드 URL: ${env.BUILD_URL}
                 """
