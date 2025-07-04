@@ -69,17 +69,10 @@ pipeline {
                             echo "⚠️ junit.xml 파일이 없습니다."
                         }
                         
-                        // 코드 커버리지 리포트 발행
+                        // 커버리지 결과 확인 (publishHTML 대신 로그로)
                         if (fileExists('coverage/lcov-report/index.html')) {
-                            publishHTML([
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'coverage/lcov-report',
-                                reportFiles: 'index.html',
-                                reportName: 'Coverage Report'
-                            ])
-                            echo "✅ 커버리지 리포트 발행 완료"
+                            echo "✅ 커버리지 리포트 생성 완료"
+                            sh 'ls -la coverage/'
                         } else {
                             echo "⚠️ 커버리지 리포트를 찾을 수 없습니다."
                         }
@@ -157,7 +150,12 @@ pipeline {
                 echo "워크스페이스 내용:"
                 sh 'ls -la'
                 if (fileExists('coverage')) {
+                    echo "커버리지 리포트:"
                     sh 'ls -la coverage/'
+                }
+                if (fileExists('build')) {
+                    echo "빌드 결과물:"
+                    sh 'ls -la build/'
                 }
             }
         }
@@ -165,7 +163,7 @@ pipeline {
             echo '✅ Pipeline 성공!'
             script {
                 def message = """
-                ✅ 빌드 성공!
+                🎉 빌드 성공!
                 프로젝트: ${env.JOB_NAME}
                 빌드 번호: ${env.BUILD_NUMBER}
                 브랜치: ${env.BRANCH_NAME ?: 'main'}
@@ -179,11 +177,24 @@ pipeline {
             echo '❌ Pipeline 실패!'
             script {
                 def message = """
-                ❌ 빌드 실패!
+                💥 빌드 실패!
                 프로젝트: ${env.JOB_NAME}
                 빌드 번호: ${env.BUILD_NUMBER}
                 브랜치: ${env.BRANCH_NAME ?: 'main'}
                 실패 단계: ${env.STAGE_NAME}
+                빌드 URL: ${env.BUILD_URL}
+                """
+                echo message
+            }
+        }
+        unstable {
+            echo '⚠️ Pipeline 불안정!'
+            script {
+                def message = """
+                ⚠️ 빌드 불안정!
+                프로젝트: ${env.JOB_NAME}
+                빌드 번호: ${env.BUILD_NUMBER}
+                브랜치: ${env.BRANCH_NAME ?: 'main'}
                 빌드 URL: ${env.BUILD_URL}
                 """
                 echo message
