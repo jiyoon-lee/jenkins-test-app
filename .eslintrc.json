@@ -5,5 +5,15 @@
     "no-console": "warn",
     "prefer-const": "error",
     "no-var": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.js", "**/*.test.tsx", "src/setupTests.js"],
+      "rules": {
+        "testing-library/no-container": "off",
+        "testing-library/no-node-access": "off",
+        "no-console": "off"
+      }
+    }
+  ]
 }
